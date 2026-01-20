@@ -1,0 +1,1635 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div class="view-header">
+    <div class="view-header-left">
+      <a href="{{ url_for('dta_viewer') }}" class="back-link">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        Back to DTA Viewer
+      </a>
+      <h1>{{ dta.dta_number }}{% if dta.dta_name %} • {{ dta.dta_name }}{% endif %}</h1>
+      <p class="page-subtitle">Read-only view of DTA configuration</p>
+    </div>
+  </div>
+</div>
+
+<div class="view-container">
+  <!-- DTA Summary Card -->
+  <div class="card summary-card">
+    <div class="card-title">
+      <span class="card-title-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+      </span>
+      DTA Details
+    </div>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-label">DTA ID</div>
+        <div class="summary-value">{{ dta.dta_id }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">DTA Number</div>
+        <div class="summary-value">{{ dta.dta_number }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">DTA Name</div>
+        <div class="summary-value">{{ dta.dta_name or 'N/A' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Trial ID</div>
+        <div class="summary-value">{{ dta.trial_id or 'N/A' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Data Stream</div>
+        <div class="summary-value">{{ dta.data_stream_type or 'N/A' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Vendor</div>
+        <div class="summary-value">{{ dta.data_provider_name or 'N/A' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Status</div>
+        <div class="summary-value">
+          <span class="status-badge status-{{ (dta.status or 'unknown')|lower|replace('_', '-') }}">
+            {{ dta.status or 'Unknown' }}
+          </span>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Workflow State</div>
+        <div class="summary-value">
+          <span class="workflow-badge workflow-{{ (dta.workflow_state or 'unknown')|lower|replace('_', '-') }}">
+            {{ dta.workflow_state or 'Unknown' }}
+          </span>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Base Template</div>
+        <div class="summary-value">{{ dta.base_template_version or 'None' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Latest Draft</div>
+        <div class="summary-value">{{ dta.current_draft_version or 'None' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Current Version</div>
+        <div class="summary-value">{{ dta.version or 'None' }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Created</div>
+        <div class="summary-value">{{ dta.created_ts or 'N/A' }}</div>
+      </div>
+      <div class="summary-item summary-item-wide source-docs-container">
+        <div class="summary-label">Source Documents</div>
+        <div class="summary-value">
+          {% if source_documents and source_documents|length > 0 %}
+          <button class="source-docs-toggle" onclick="toggleSourceDocs()" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            {{ source_documents|length }} file{% if source_documents|length > 1 %}s{% endif %}
+            <svg class="chevron-toggle" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <!-- Expandable Panel -->
+          <div class="source-docs-panel" id="source-docs-panel">
+            <div class="source-docs-list">
+              {% for doc in source_documents %}
+              <div class="source-doc-row">
+                <span class="source-doc-icon-mini">
+                  {% if doc.document_tags and 'tsDTA' in doc.document_tags|join(',') %}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                    <rect x="8" y="13" width="8" height="4" rx="1"></rect>
+                  </svg>
+                  {% elif doc.document_tags and 'Protocol' in doc.document_tags|join(',') %}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                  </svg>
+                  {% elif doc.document_tags and 'OA' in doc.document_tags|join(',') %}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                  </svg>
+                  {% else %}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                  </svg>
+                  {% endif %}
+                </span>
+                <span class="source-doc-name-mini">{{ doc.file_name or doc.extracted_path.split('/')[-1] or 'Unknown' }}</span>
+                {% if doc.document_tags %}
+                <span class="source-doc-tag">{{ doc.document_tags|join(', ') }}</span>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% else %}
+          <span class="text-muted">No source documents</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    
+    {% if dta.notes %}
+    <div class="notes-section">
+      <div class="notes-label">Notes / Review Reason</div>
+      <div class="notes-content">{{ dta.notes }}</div>
+    </div>
+    {% endif %}
+    
+    <!-- DTA Actions -->
+    <div class="dta-actions-panel">
+      {% set workflow = dta.workflow_state or '' %}
+      {% if workflow in ['DRAFT', 'NOT_STARTED'] or dta.status == 'DRAFT' %}
+      <!-- Edit button for Draft DTAs -->
+      <a href="{{ url_for('edit_draft', dta_id=dta.dta_id) }}" class="btn btn-success btn-lg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+        Edit DTA
+      </a>
+      {% elif workflow == 'APPROVED' or dta.status in ['ACTIVE', 'APPROVED'] %}
+      <!-- Clone button for Approved DTAs - now goes to configure page -->
+      <a href="{{ url_for('configure_dta') }}?source_id={{ dta.dta_id }}&source_type=DTA" class="btn btn-success btn-lg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Clone DTA
+      </a>
+      {% endif %}
+      
+      <button class="btn btn-primary btn-lg" onclick="exportDtaToExcel('{{ dta.dta_id }}')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Export to Excel
+      </button>
+      {% if dta.status == 'DRAFT' %}
+      <button class="btn btn-danger btn-lg" onclick="deleteDta('{{ dta.dta_id }}', '{{ dta.dta_number }}', '{{ dta.dta_name or dta.dta_number }}')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+        Delete Draft
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Operational Agreements Section (Accordion) -->
+  <div class="card oa-card accordion-card">
+    <div class="card-title accordion-header" onclick="toggleAccordion('oa-section')">
+      <span class="card-title-icon oa-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+      </span>
+      Operational Agreements
+      {% if oa_data and oa_data.oa_exists %}<span class="accordion-count">({{ oa_data.oa_options|length if oa_data.oa_options else 0 }} options)</span>{% endif %}
+      <span class="accordion-toggle" id="oa-section-toggle">
+        <svg class="chevron-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </span>
+    </div>
+    <div class="accordion-content" id="oa-section-content">
+    
+    {% if not oa_data or not oa_data.oa_exists %}
+    <div class="oa-empty-state">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="12" y1="11" x2="12" y2="17"></line>
+        <line x1="9" y1="14" x2="15" y2="14"></line>
+      </svg>
+      <p>No Operational Agreements associated with this DTA</p>
+    </div>
+    {% else %}
+    
+    <!-- Section 1: Agreement Overview -->
+    <div class="oa-section">
+      <h3 class="oa-section-title">Agreement Overview</h3>
+      <div class="oa-fields-grid">
+        {% for field in oa_data.oa_parent %}
+        <div class="oa-field">
+          <div class="oa-field-label">{{ field.label }}</div>
+          <div class="oa-field-value">{{ field.value or '—' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    
+    <!-- Section 2: Agreement Attributes -->
+    {% if oa_data.oa_attr and oa_data.oa_attr|length > 0 %}
+    <div class="oa-section">
+      <h3 class="oa-section-title">Agreement Attributes</h3>
+      <div class="oa-fields-grid">
+        {% for field in oa_data.oa_attr %}
+        <div class="oa-field">
+          <div class="oa-field-label">{{ field.label }}</div>
+          <div class="oa-field-value">{{ field.value or '—' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    
+    <!-- Section 3: Options (Checkboxes) -->
+    {% if oa_data.oa_options and oa_data.oa_options|length > 0 %}
+    <div class="oa-section">
+      <h3 class="oa-section-title">Options</h3>
+      {% for opt in oa_data.oa_options %}
+      <div class="oa-option-group">
+        <h4 class="oa-option-section-name">{{ opt.section_name or 'Options' }}</h4>
+        {% if opt.section_description %}
+        <p class="oa-option-description">{{ opt.section_description }}</p>
+        {% endif %}
+        <div class="oa-options-grid">
+          {% for option in opt.options %}
+          <label class="oa-checkbox-item">
+            <input type="checkbox" disabled 
+                   {% if option in opt.selected_options %}checked{% endif %}>
+            <span class="oa-checkbox-label">{{ option }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% if opt.vendor_comments %}
+        <p class="oa-vendor-comment"><em>Vendor: {{ opt.vendor_comments }}</em></p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Section 4: Other Items -->
+    {% if oa_data.oa_other and oa_data.oa_other|length > 0 %}
+    <div class="oa-section">
+      <h3 class="oa-section-title">Other Information</h3>
+      <div class="oa-other-table">
+        <table class="data-table oa-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in oa_data.oa_other %}
+            <tr>
+              <td class="oa-item-name">{{ item.item_name or item.get('field', 'Unknown') }}</td>
+              <td class="oa-item-value">{{ item.item_value or item.get('value', '—') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    
+    {% endif %}
+    </div> <!-- End accordion-content -->
+  </div>
+
+  <!-- Transfer Variables Tab (Accordion) -->
+  <div class="card data-card accordion-card">
+    <div class="card-header-row accordion-header" onclick="toggleAccordion('tv-section')">
+      <div class="card-title">
+        <span class="card-title-icon tv-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20V10"></path>
+            <path d="M18 20V4"></path>
+            <path d="M6 20v-4"></path>
+          </svg>
+        </span>
+        Transfer Variables (<span id="tv-visible-count">{{ transfer_variables|length }}</span>)
+      </div>
+      <div class="accordion-header-right">
+        {% if transfer_variables|length > 0 %}
+        <div class="domain-filter" onclick="event.stopPropagation();">
+          <label for="tv-domain-filter">Domain Info</label>
+          <select id="tv-domain-filter" onchange="filterByDomain('tv', this.value)">
+            <option value="all">All</option>
+            {% set tv_domains = transfer_variables|map(attribute='domain_info')|unique|reject('none')|list %}
+            {% for domain in tv_domains %}
+              {% if domain %}
+              <option value="{{ domain }}">{{ domain }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <span class="accordion-toggle" id="tv-section-toggle">
+          <svg class="chevron-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
+      </div>
+    </div>
+    <div class="accordion-content" id="tv-section-content">
+    {% if transfer_variables|length == 0 %}
+      <div class="empty-state-card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 20V10"></path>
+          <path d="M18 20V4"></path>
+          <path d="M6 20v-4"></path>
+        </svg>
+        <p>No Transfer Variables associated with this DTA</p>
+      </div>
+    {% else %}
+      <div class="data-table-container">
+        <table class="data-table" id="tv-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Variable Name</th>
+              <th>Label</th>
+              <th>Domain</th>
+              <th>Format</th>
+              <th>Max Length</th>
+              <th>File Key</th>
+              <th>All Records</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tv in transfer_variables %}
+            <tr data-domain="{{ tv.domain_info or '' }}">
+              <td>{{ tv.transfer_variable_order or loop.index }}</td>
+              <td class="var-name">{{ tv.transfer_variable_name or 'N/A' }}</td>
+              <td>{{ tv.transfer_variable_label or 'N/A' }}</td>
+              <td>{{ tv.domain_info or 'N/A' }}</td>
+              <td>{{ tv.format or 'N/A' }}</td>
+              <td>{{ tv.anticipated_max_length or 'N/A' }}</td>
+              <td>
+                {% if tv.transfer_file_key %}
+                  <span class="bool-badge bool-yes">Yes</span>
+                {% else %}
+                  <span class="bool-badge bool-no">No</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if tv.populate_for_all_records %}
+                  <span class="bool-badge bool-yes">Yes</span>
+                {% else %}
+                  <span class="bool-badge bool-no">No</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="row-status status-{{ (tv.status or 'unknown')|lower|replace('_', '-') }}">
+                  {{ tv.status or 'Unknown' }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    </div> <!-- End accordion-content -->
+  </div>
+
+  <!-- Test Concepts Tab (Accordion) -->
+  <div class="card data-card accordion-card">
+    <div class="card-header-row accordion-header" onclick="toggleAccordion('tc-section')">
+      <div class="card-title">
+        <span class="card-title-icon tc-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"></path>
+            <rect x="9" y="3" width="6" height="4" rx="1"></rect>
+            <path d="M9 12h6"></path>
+            <path d="M9 16h6"></path>
+          </svg>
+        </span>
+        Test Concepts (<span id="tc-visible-count">{{ test_concepts|length }}</span>)
+      </div>
+      <div class="accordion-header-right">
+        {% if test_concepts|length > 0 %}
+        <div class="domain-filter" onclick="event.stopPropagation();">
+          <label for="tc-domain-filter">Domain Info</label>
+          <select id="tc-domain-filter" onchange="filterByDomain('tc', this.value)">
+            <option value="all">All</option>
+            {% set tc_domains = test_concepts|map(attribute='domain_info')|unique|reject('none')|list %}
+            {% for domain in tc_domains %}
+              {% if domain %}
+              <option value="{{ domain }}">{{ domain }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <span class="accordion-toggle" id="tc-section-toggle">
+          <svg class="chevron-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
+      </div>
+    </div>
+    <div class="accordion-content" id="tc-section-content">
+    {% if test_concepts|length == 0 %}
+      <div class="empty-state-card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"></path>
+          <rect x="9" y="3" width="6" height="4" rx="1"></rect>
+          <path d="M9 12h6"></path>
+          <path d="M9 16h6"></path>
+        </svg>
+        <p>No Test Concepts associated with this DTA</p>
+      </div>
+    {% else %}
+      <div class="data-table-container tc-table-container">
+        <table class="data-table" id="tc-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Test Concept Ref</th>
+              <!-- Dynamic columns from transfer_tuple_map -->
+              {% for key in tuple_keys %}
+              <th class="tuple-col">{{ key|replace('_', ' ')|title }}</th>
+              {% endfor %}
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tc in test_concepts %}
+            <tr data-domain="{{ tc.domain_info or '' }}">
+              <td>{{ loop.index }}</td>
+              <td class="var-name">{{ tc.test_concept_reference or 'N/A' }}</td>
+              <!-- Dynamic values from transfer_tuple_map -->
+              {% for key in tuple_keys %}
+              <td class="tuple-val">{{ tc.get(key, '') or '' }}</td>
+              {% endfor %}
+              <td>
+                <span class="row-status status-{{ (tc.status or 'unknown')|lower|replace('_', '-') }}">
+                  {{ tc.status or 'Unknown' }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    </div> <!-- End accordion-content -->
+  </div>
+</div>
+
+<style>
+  /* View page minimal overrides - main styles in styles.css */
+  
+  /* Operational Agreements Section Styles */
+  .oa-card {
+    background: var(--bg-primary);
+  }
+  
+  .oa-icon {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  }
+  
+  .oa-empty-state,
+  .empty-state-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+    text-align: center;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 2px dashed var(--border-secondary);
+  }
+  
+  .oa-empty-state svg,
+  .empty-state-card svg {
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+  
+  .oa-empty-state p,
+  .empty-state-card p {
+    font-size: 15px;
+    margin: 0;
+  }
+  
+  .oa-section {
+    margin-top: 28px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-secondary);
+    overflow: hidden;
+  }
+  
+  .oa-section:first-of-type {
+    margin-top: 20px;
+  }
+  
+  .oa-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    padding: 14px 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg-secondary) 100%);
+    border-bottom: 2px solid var(--primary);
+  }
+  
+  .oa-fields-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    padding: 20px;
+  }
+  
+  .oa-field {
+    background: var(--bg-secondary);
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--primary);
+  }
+  
+  .oa-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  
+  .oa-field-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    word-break: break-word;
+  }
+  
+  /* Options as Checkboxes */
+  .oa-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+  }
+  
+  .oa-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    cursor: default;
+    transition: background 0.15s ease;
+  }
+  
+  .oa-checkbox-item:hover {
+    background: var(--bg-tertiary);
+  }
+  
+  .oa-checkbox-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: default;
+    flex-shrink: 0;
+  }
+  
+  .oa-checkbox-item input[type="checkbox"]:checked {
+    background: var(--primary);
+  }
+  
+  .oa-checkbox-label {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.4;
+  }
+  
+  /* Option Group (section with checkboxes) - Zebra striping */
+  .oa-option-group {
+    margin-bottom: 0;
+    padding: 20px 24px;
+    border-left: 4px solid var(--primary);
+    border-bottom: 1px solid var(--border-secondary);
+  }
+  
+  /* Odd groups: white background */
+  .oa-option-group:nth-child(odd) {
+    background: var(--bg-primary);
+  }
+  
+  /* Even groups: grey background */
+  .oa-option-group:nth-child(even) {
+    background: var(--bg-secondary);
+  }
+  
+  .oa-option-group:last-child {
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+  
+  .oa-option-section-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 6px 0;
+  }
+  
+  .oa-option-description {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 14px 0;
+    line-height: 1.5;
+  }
+  
+  .oa-vendor-comment {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 14px 0 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-secondary);
+    font-style: italic;
+  }
+  
+  .oa-option-group .oa-options-grid {
+    background: transparent;
+  }
+  
+  /* Checkbox items inherit appropriate background based on parent group */
+  .oa-option-group:nth-child(odd) .oa-checkbox-item {
+    background: var(--bg-secondary);
+  }
+  
+  .oa-option-group:nth-child(even) .oa-checkbox-item {
+    background: var(--bg-primary);
+  }
+  
+  /* Other Items Table */
+  .oa-other-table {
+    overflow-x: auto;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+  }
+  
+  .oa-table {
+    margin: 0;
+    width: 100%;
+  }
+  
+  .oa-table tr:nth-child(odd) {
+    background: var(--bg-primary);
+  }
+  
+  .oa-table tr:nth-child(even) {
+    background: var(--bg-secondary);
+  }
+  
+  .oa-table td {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-secondary);
+  }
+  
+  .oa-table tr:last-child td {
+    border-bottom: none;
+  }
+  
+  .oa-item-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 200px;
+  }
+  
+  .oa-item-value {
+    max-width: 500px;
+    word-break: break-word;
+    color: var(--text-secondary);
+  }
+  
+  @media (max-width: 768px) {
+    .oa-fields-grid,
+    .oa-options-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  /* Test Concepts table with dynamic columns */
+  .tc-table-container {
+    max-height: 500px;
+    overflow: auto;
+    margin: 12px 0 0 0;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+  }
+
+  .tuple-col {
+    min-width: 120px;
+    max-width: 200px;
+    font-size: 11px;
+    word-break: break-word;
+  }
+
+  .tuple-val {
+    font-size: 13px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tuple-val:hover {
+    white-space: normal;
+    overflow: visible;
+    position: relative;
+    z-index: 10;
+    background: var(--soft);
+    padding: 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .card-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  tr.filtered-out {
+    display: none !important;
+  }
+
+  @media (max-width: 768px) {
+    .summary-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .card-header-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .dta-actions-panel {
+      flex-direction: column;
+    }
+    .dta-actions-panel .btn {
+      max-width: none;
+    }
+  }
+
+  /* Clone Loading Overlay Styles */
+  .clone-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .clone-loading-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+  }
+
+  .clone-loading-modal {
+    position: relative;
+    background: white;
+    border-radius: 16px;
+    padding: 32px 40px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: cloneModalIn 0.3s ease-out;
+  }
+
+  @keyframes cloneModalIn {
+    from {
+      opacity: 0;
+      transform: scale(0.9) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .clone-loading-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .clone-loading-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #1a1a2e;
+  }
+
+  .clone-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e0e0e0;
+    border-top-color: #4CAF50;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .clone-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .clone-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #f5f5f5;
+    opacity: 0.5;
+    transition: all 0.3s ease;
+  }
+
+  .clone-step.active {
+    opacity: 1;
+    background: #e8f5e9;
+  }
+
+  .clone-step.completed {
+    opacity: 1;
+    background: #e8f5e9;
+  }
+
+  .clone-step .step-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .clone-step .step-icon svg {
+    stroke: #9e9e9e;
+  }
+
+  .clone-step.active .step-icon svg {
+    stroke: #4CAF50;
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  .clone-step.completed .step-icon svg {
+    stroke: #4CAF50;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .clone-step span {
+    font-size: 0.9rem;
+    color: #666;
+  }
+
+  .clone-step.active span,
+  .clone-step.completed span {
+    color: #1a1a2e;
+    font-weight: 500;
+  }
+
+  .clone-note {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .spinner-small {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ============================================
+     SOURCE DOCUMENTS EXPANDABLE PANEL STYLES
+     ============================================ */
+  .summary-item-wide {
+    grid-column: span 2;
+  }
+
+  .source-docs-container {
+    position: relative;
+  }
+
+  .source-docs-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .source-docs-toggle:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary);
+  }
+
+  .source-docs-toggle svg {
+    flex-shrink: 0;
+    stroke: var(--primary);
+    transition: all 0.2s ease;
+  }
+
+  .source-docs-toggle .chevron-toggle {
+    transition: transform 0.3s ease;
+  }
+
+  .source-docs-toggle.expanded .chevron-toggle {
+    transform: rotate(180deg);
+  }
+
+  /* Expandable Panel */
+  .source-docs-panel {
+    display: none;
+    margin-top: 10px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    animation: slideDown 0.2s ease;
+  }
+
+  .source-docs-panel.show {
+    display: block;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .source-docs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .source-doc-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-secondary);
+    transition: all 0.2s ease;
+    flex-wrap: wrap;
+  }
+
+  .source-doc-row:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+  }
+
+  .source-doc-icon-mini {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .source-doc-name-mini {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    word-break: break-word;
+  }
+
+  .source-doc-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ============================================
+     ACCORDION STYLES
+     ============================================ */
+  .accordion-card {
+    transition: all 0.3s ease;
+  }
+
+  .accordion-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+    position: relative;
+  }
+
+  .accordion-header:hover {
+    background: var(--bg-secondary);
+  }
+
+  .accordion-header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .accordion-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    transition: all 0.3s ease;
+  }
+
+  .accordion-toggle:hover {
+    background: var(--primary-light);
+  }
+
+  .accordion-toggle .chevron-icon {
+    transition: transform 0.3s ease;
+  }
+
+  .accordion-card.collapsed .accordion-toggle .chevron-icon {
+    transform: rotate(-90deg);
+  }
+
+  .accordion-count {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 8px;
+  }
+
+  .accordion-content {
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.3s ease, padding 0.3s ease;
+    max-height: 5000px;
+    opacity: 1;
+  }
+
+  .accordion-card.collapsed .accordion-content {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Smooth animation for the empty state within accordion */
+  .accordion-content .oa-empty-state,
+  .accordion-content .empty-state-card {
+    transition: opacity 0.3s ease;
+  }
+
+  .accordion-card.collapsed .accordion-content .oa-empty-state,
+  .accordion-card.collapsed .accordion-content .empty-state-card {
+    opacity: 0;
+  }
+</style>
+
+<script>
+  // ============================================
+  // SOURCE DOCUMENTS PANEL TOGGLE
+  // ============================================
+  function toggleSourceDocs() {
+    const panel = document.getElementById('source-docs-panel');
+    const toggle = document.querySelector('.source-docs-toggle');
+    
+    if (panel.classList.contains('show')) {
+      panel.classList.remove('show');
+      toggle.classList.remove('expanded');
+    } else {
+      panel.classList.add('show');
+      toggle.classList.add('expanded');
+    }
+  }
+
+  // ============================================
+  // ACCORDION TOGGLE FUNCTIONALITY
+  // ============================================
+  function toggleAccordion(sectionId) {
+    const card = document.querySelector(`#${sectionId}-content`).closest('.accordion-card');
+    const isCollapsed = card.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+      // Expand
+      card.classList.remove('collapsed');
+    } else {
+      // Collapse
+      card.classList.add('collapsed');
+    }
+    
+    // Store state in localStorage for persistence
+    const accordionStates = JSON.parse(localStorage.getItem('dtaViewAccordionStates') || '{}');
+    accordionStates[sectionId] = !isCollapsed; // true = collapsed
+    localStorage.setItem('dtaViewAccordionStates', JSON.stringify(accordionStates));
+  }
+
+  // Restore accordion states on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    const accordionStates = JSON.parse(localStorage.getItem('dtaViewAccordionStates') || '{}');
+    
+    Object.keys(accordionStates).forEach(sectionId => {
+      if (accordionStates[sectionId]) {
+        const content = document.getElementById(`${sectionId}-content`);
+        if (content) {
+          const card = content.closest('.accordion-card');
+          if (card) {
+            card.classList.add('collapsed');
+          }
+        }
+      }
+    });
+  });
+
+  // Clone with loading overlay - shows progress steps
+  function cloneWithLoading(url, btn) {
+    // Show loading state on button
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-small"></span> Cloning...';
+    
+    // Show loading overlay with progress
+    const overlay = document.createElement('div');
+    overlay.className = 'clone-loading-overlay';
+    overlay.innerHTML = `
+      <div class="clone-loading-backdrop"></div>
+      <div class="clone-loading-modal">
+        <div class="clone-loading-header">
+          <div class="clone-spinner"></div>
+          <h3>Creating Draft DTA</h3>
+        </div>
+        <div class="clone-progress">
+          <div class="clone-step active" id="step1">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Generating DTA number...</span>
+          </div>
+          <div class="clone-step" id="step2">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Creating DTA record...</span>
+          </div>
+          <div class="clone-step" id="step3">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Setting up approval workflow...</span>
+          </div>
+          <div class="clone-step" id="step4">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Copying transfer variables...</span>
+          </div>
+          <div class="clone-step" id="step5">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Copying test concepts...</span>
+          </div>
+          <div class="clone-step" id="step6">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Copying Operational Agreements...</span>
+          </div>
+          <div class="clone-step" id="step7">
+            <div class="step-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+            </div>
+            <span>Finalizing draft...</span>
+          </div>
+        </div>
+        <p class="clone-note">This may take a few seconds...</p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    // Animate through steps
+    const steps = ['step1', 'step2', 'step3', 'step4', 'step5', 'step6', 'step7'];
+    let currentStep = 0;
+    
+    const stepInterval = setInterval(() => {
+      if (currentStep < steps.length - 1) {
+        // Mark current step as completed
+        const current = document.getElementById(steps[currentStep]);
+        if (current) {
+          current.classList.remove('active');
+          current.classList.add('completed');
+          current.querySelector('.step-icon').innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          `;
+        }
+        
+        // Activate next step
+        currentStep++;
+        const next = document.getElementById(steps[currentStep]);
+        if (next) {
+          next.classList.add('active');
+        }
+      } else {
+        clearInterval(stepInterval);
+      }
+    }, 800);
+    
+    // Navigate to clone URL
+    window.location.href = url;
+  }
+
+  function filterByDomain(tableType, domainValue) {
+    const tableId = tableType === 'tv' ? 'tv-table' : 'tc-table';
+    const countId = tableType === 'tv' ? 'tv-visible-count' : 'tc-visible-count';
+    const table = document.getElementById(tableId);
+    const countSpan = document.getElementById(countId);
+    
+    if (!table) return;
+    
+    const rows = table.querySelectorAll('tbody tr');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+      const rowDomain = row.getAttribute('data-domain') || '';
+      
+      if (domainValue === 'all' || rowDomain === domainValue) {
+        row.classList.remove('filtered-out');
+        visibleCount++;
+      } else {
+        row.classList.add('filtered-out');
+      }
+    });
+    
+    if (countSpan) {
+      countSpan.textContent = visibleCount;
+    }
+  }
+
+  function exportDtaToExcel(dtaId) {
+    // Trigger export job - unique name to avoid collision with script.js
+    const exportBtn = document.querySelector('.btn-primary');
+    const originalText = exportBtn.innerHTML;
+    
+    exportBtn.innerHTML = `
+      <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32">
+          <animate attributeName="stroke-dashoffset" values="32;0" dur="1s" repeatCount="indefinite"/>
+        </circle>
+      </svg>
+      Exporting...
+    `;
+    exportBtn.disabled = true;
+    
+    fetch(`/api/dta/${dtaId}/export?export_type=tsDTA`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && data.job_run_id) {
+          // Job triggered - show status
+          exportBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Export Started
+          `;
+          
+          // Show notification with link
+          showExportNotification(data.dta_number, data.status_url, data.job_run_id, dtaId);
+        } else if (data.export_timestamp) {
+          // Fallback JSON export - trigger download
+          const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${data.dta?.dta_number || 'DTA'}_export.json`;
+          a.click();
+          
+          exportBtn.innerHTML = originalText;
+          exportBtn.disabled = false;
+        } else {
+          throw new Error(data.error || 'Export failed');
+        }
+      })
+      .catch(error => {
+        alert('Export error: ' + error.message);
+        exportBtn.innerHTML = originalText;
+        exportBtn.disabled = false;
+      });
+  }
+  
+  function showExportNotification(dtaNumber, statusUrl, runId, dtaId) {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'export-notification';
+    notification.innerHTML = `
+      <div class="export-notification-content">
+        <strong>📦 Export Started: ${dtaNumber}</strong>
+        <p>The Excel file is being generated. This may take a minute.</p>
+        <div class="export-status" id="export-status-${runId}">
+          <span class="status-icon">⏳</span>
+          <span class="status-text">Processing...</span>
+        </div>
+        <div class="export-actions">
+          <a href="${statusUrl}" target="_blank" class="btn btn-secondary btn-sm">View Job</a>
+          <button class="btn btn-sm" onclick="this.closest('.export-notification').remove()">Dismiss</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Poll for status
+    pollExportStatus(dtaId, runId);
+  }
+  
+  function pollExportStatus(dtaId, runId) {
+    const statusEl = document.getElementById(`export-status-${runId}`);
+    if (!statusEl) return;
+    
+    fetch(`/api/dta/${dtaId}/export/status/${runId}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.is_complete) {
+          if (data.result === 'SUCCESS') {
+            statusEl.innerHTML = `
+              <span class="status-icon">✅</span>
+              <span class="status-text">Export complete! File saved to Volumes.</span>
+            `;
+            // Re-enable export button
+            const exportBtn = document.querySelector('.btn-primary');
+            if (exportBtn) {
+              exportBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export
+              `;
+              exportBtn.disabled = false;
+            }
+          } else {
+            statusEl.innerHTML = `
+              <span class="status-icon">❌</span>
+              <span class="status-text">Export failed: ${data.result}</span>
+            `;
+          }
+        } else {
+          // Still running - poll again
+          setTimeout(() => pollExportStatus(dtaId, runId), 3000);
+        }
+      })
+      .catch(error => {
+        console.error('Status check failed:', error);
+      });
+  }
+
+  // Store pending action details
+  let pendingAction = null;
+
+  function deleteDta(dtaId, dtaNumber, dtaName) {
+    // Show custom confirmation modal for delete
+    pendingAction = { dtaId, dtaNumber, dtaName, type: 'delete' };
+    showConfirmModal({
+      title: 'Delete Draft',
+      icon: 'delete',
+      dtaName: dtaName || dtaNumber,
+      message: 'This will permanently remove the draft DTA and all associated data:',
+      items: ['Transfer Variables', 'Test Concepts', 'Workflows & Approvals'],
+      warning: 'This action CANNOT be undone.',
+      confirmText: 'Delete',
+      confirmClass: 'btn-danger'
+    });
+  }
+
+  function archiveDta(dtaId, dtaNumber, dtaName) {
+    // Show custom confirmation modal for archive
+    pendingAction = { dtaId, dtaNumber, dtaName, type: 'archive' };
+    showConfirmModal({
+      title: 'Archive DTA',
+      icon: 'archive',
+      dtaName: dtaName || dtaNumber,
+      message: 'The DTA and all associated metadata will be:',
+      items: ['Marked as ARCHIVED', 'Given an effective end date', 'Hidden from active views'],
+      warning: 'Data is preserved for audit purposes.',
+      confirmText: 'Archive',
+      confirmClass: 'btn-warning'
+    });
+  }
+
+  function showConfirmModal(options) {
+    const modal = document.getElementById('confirm-modal');
+    const overlay = document.getElementById('modal-overlay');
+    
+    // Set icon
+    const iconContainer = document.getElementById('modal-icon');
+    if (options.icon === 'delete') {
+      iconContainer.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+        </svg>`;
+      iconContainer.className = 'modal-icon danger';
+    } else {
+      iconContainer.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="21 8 21 21 3 21 3 8"></polyline>
+          <rect x="1" y="3" width="22" height="5"></rect>
+        </svg>`;
+      iconContainer.className = 'modal-icon warning';
+    }
+    
+    // Set content
+    document.getElementById('modal-title').textContent = options.title;
+    document.getElementById('modal-dta-name').textContent = options.dtaName;
+    document.getElementById('modal-message').textContent = options.message;
+    
+    const itemsList = document.getElementById('modal-items');
+    itemsList.innerHTML = options.items.map(item => `<li>${item}</li>`).join('');
+    
+    document.getElementById('modal-warning').textContent = options.warning;
+    
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    confirmBtn.textContent = options.confirmText;
+    confirmBtn.className = `btn ${options.confirmClass}`;
+    confirmBtn.disabled = false;
+    
+    const cancelBtn = document.getElementById('modal-cancel-btn');
+    cancelBtn.disabled = false;
+    cancelBtn.style.display = '';
+    
+    // Show modal
+    overlay.classList.add('active');
+    modal.classList.add('active');
+  }
+
+  function closeConfirmModal() {
+    const modal = document.getElementById('confirm-modal');
+    const overlay = document.getElementById('modal-overlay');
+    overlay.classList.remove('active');
+    modal.classList.remove('active');
+    pendingAction = null;
+  }
+
+  function confirmAction() {
+    if (!pendingAction) return;
+    
+    // Save action details
+    const { dtaId, dtaNumber, type } = pendingAction;
+    
+    // Show loading state in modal
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    const cancelBtn = document.getElementById('modal-cancel-btn');
+    const originalText = confirmBtn.textContent;
+    
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = `<span class="spinner-sm"></span> ${type === 'delete' ? 'Deleting...' : 'Archiving...'}`;
+    cancelBtn.disabled = true;
+    cancelBtn.style.display = 'none';
+    
+    // Perform the action
+    fetch(`/api/dta/${dtaId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.ok) {
+        const action = data.action === 'archived' ? 'archived' : 'deleted';
+        // Disable "Leave site?" warning before navigating
+        if (typeof disableLeaveWarning === 'function') {
+          disableLeaveWarning();
+        }
+        // Close modal and redirect
+        closeConfirmModal();
+        window.location.href = `/dta-viewer?${action}=${dtaNumber}`;
+      } else {
+        throw new Error(data.error || 'Operation failed');
+      }
+    })
+    .catch(error => {
+      // Reset modal state on error
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = originalText;
+      cancelBtn.disabled = false;
+      cancelBtn.style.display = '';
+      
+      // Show error in modal
+      document.getElementById('modal-warning').textContent = 'Error: ' + error.message;
+      document.getElementById('modal-warning').style.background = 'var(--error-bg)';
+      document.getElementById('modal-warning').style.color = 'var(--error)';
+    });
+  }
+
+  // Close modal on escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeConfirmModal();
+    }
+  });
+</script>
+
+<!-- Confirmation Modal -->
+<div id="modal-overlay" class="modal-overlay" onclick="closeConfirmModal()"></div>
+<div id="confirm-modal" class="confirm-modal">
+  <div class="modal-header">
+    <div id="modal-icon" class="modal-icon danger"></div>
+    <h2 id="modal-title">Delete Draft</h2>
+  </div>
+  <div class="modal-body">
+    <p id="modal-dta-name" class="modal-dta-name">DTA Name</p>
+    <p id="modal-message" class="modal-message">This will permanently remove the draft DTA and all associated data:</p>
+    <ul id="modal-items" class="modal-items">
+      <li>Transfer Variables</li>
+      <li>Test Concepts</li>
+      <li>Workflows & Approvals</li>
+    </ul>
+    <p id="modal-warning" class="modal-warning">This action CANNOT be undone.</p>
+  </div>
+  <div class="modal-footer">
+    <button id="modal-cancel-btn" class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+    <button id="modal-confirm-btn" class="btn btn-danger" onclick="confirmAction()">Delete</button>
+  </div>
+</div>
+
+{% endblock %}
+
