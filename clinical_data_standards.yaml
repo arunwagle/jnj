@@ -1,0 +1,910 @@
+# ================================================================================
+# CLINICAL DATA STANDARDS - UNIFIED CONFIGURATION
+# ================================================================================
+# This single config file manages all data pipelines for the clinical_data_standards project
+# Multiple pipelines can be defined and managed from this one file
+#
+# Structure:
+#   - globals: Project-wide settings (catalog, schemas)
+#   - services: Reusable service configurations (autoloader, parsers, models)
+#   - pipelines: Multiple pipeline definitions (autoloader, batch_read, trial_metadata_zip_processor, etc.)
+# ================================================================================
+
+# ================================
+# GLOBALS - Project-wide settings
+# ================================
+# Catalog and schema names are inherited from databricks.yml
+# Referenced using ${var.catalog}, ${var.bronze_schema}, etc.
+globals:
+  spark_app_name: "clinical_data_standards"
+  catalog: "aira_test"
+  bronze_schema: "bronze_md"
+  silver_schema: "silver_md"
+  gold_schema: "gold_md"
+  
+  # Volume configuration for file uploads
+  volume_name: "clinical_data_standards"
+  
+  # Upload paths are configured separately:
+  # - UI uploads: app.yaml -> UI_UPLOAD_ROOT (default: test/ui/uploads)
+  #   Structure: {ui_upload_root}/{YYYY-MM-DD}/{type}/ (date first for partitioning)
+  #   Example: /Volumes/.../test/ui/uploads/2026-01-15/protocol/file.pdf
+  #
+  # - Historical batch imports: databricks.yml -> historical_upload_root (default: test/historical_data/uploads)
+  #   File trigger watches: /Volumes/.../test/historical_data/uploads/
+  #   Drop ZIP files here for automatic processing
+
+  # ================================
+  # Jobs Configuration for UI
+  # ================================
+  # Production jobs to display in the Jobs panel (excludes test jobs)
+  # Job names are stored WITHOUT environment prefix (e.g., "[dev arun_wagle]")
+  jobs:
+    max_runs_display: 5  # Number of recent runs to show per job
+    strip_env_prefix: true  # Remove environment prefix from job names in display
+    
+    production_jobs:
+      - name: "job_cdm_dta_import"
+        display_name: "DTA Import"
+        description: "Import tsDTA and OA documents, create DTAs"
+        category: "import"
+        
+      - name: "job_cdm_file_processor"
+        display_name: "File Processor"
+        description: "Process uploaded files and extract content"
+        category: "processing"
+        
+      - name: "job_cdm_tsdta_xls_processor"
+        display_name: "tsDTA Excel Processor"
+        description: "Extract transfer variables, test concepts, codelists"
+        category: "processing"
+        
+      - name: "job_cdm_tsdta_oa_processor"
+        display_name: "OA Processor"
+        description: "Parse and normalize Operational Agreement documents"
+        category: "processing"
+        
+      - name: "job_cdm_protocol_processor"
+        display_name: "Protocol Processor"
+        description: "Extract Schedule of Activities from protocols"
+        category: "processing"
+        
+      - name: "job_cdm_dta_create"
+        display_name: "DTA Create"
+        description: "Create new DTA instances from processed documents"
+        category: "dta"
+        
+      - name: "job_cdm_setup_study"
+        display_name: "Setup Study"
+        description: "Create study and upload protocol"
+        category: "study"
+        
+      - name: "job_cdm_version_manager"
+        display_name: "Version Manager"
+        description: "Manage DTA versions and approvals"
+        category: "versioning"
+        
+      - name: "job_cdm_export_file"
+        display_name: "Export File"
+        description: "Export DTA to file formats"
+        category: "export"
+        
+      - name: "job_cdm_export_genie_assets"
+        display_name: "Export Genie Assets"
+        description: "Export assets for AI Genie integration"
+        category: "export"
+        
+      - name: "job_cdm_sql_setup"
+        display_name: "SQL Setup"
+        description: "Initialize catalog schemas and tables"
+        category: "setup"
+
+# ================================
+# SERVICES - Reusable service configurations
+# ================================
+# Define your services once, use them across multiple pipelines
+services:
+  # Document Parser Service
+  document_parser_default:
+    type: "document_parsing"
+    engine: "ai_document_intelligence"
+    extract_text: true
+    extract_tables: true
+    extract_images: false
+    output_format: "json"
+    timeout_seconds: 120
+    description: "Databricks AI Document Intelligence"
+  
+  # Entity Extractor using Foundation Model
+  entity_extractor_default:
+    type: "model_serving"
+    endpoint_name: "chatbot-endpoint-${bundle.target}"
+    max_tokens: 1000
+    temperature: 0.1
+    timeout_seconds: 90
+    retry_attempts: 3
+    description: "Foundation model for entity extraction"
+
+  # Generic GPT Entity Extractor - reusable across multiple use cases
+  # Each pipeline/use-case defines its own prompts and references this service
+  gpt_entity_extractor:
+    type: "llm"
+    endpoint: "https://imuj8rzcm7.execute-api.us-east-1.amazonaws.com/dev/genai-chat?api-version=2023-03-15-preview"
+    model: "gpt-4.1-mini-global"
+    secret_scope: "dta_poc_api_key"
+    secret_key: "gpt_api_key"
+    timeout_seconds: 120
+    description: "Generic GPT-based entity extractor for various document types"
+
+# ================================
+# PIPELINES - Multiple pipeline definitions
+# ================================
+# Each pipeline represents a distinct data flow
+# Pipelines can share the same services defined above
+pipelines:
+  
+  # ----------------------------------------
+  # PIPELINE 1: Generic File Processor
+  # ----------------------------------------
+  file_processor:
+    description: "Generic file processor for archives and regular uploads"
+    owner: "data-team"
+    mode: "streaming"
+    
+    # Volume configuration
+    source_volume: "clinical_data_standards"
+    target_volume: "clinical_data_standards"
+    
+    # Processing sources (root paths)
+    # Actual paths computed as: {root}/uploads → {root}/ingested
+    sources:
+      # Historical batch imports - file trigger watches this folder
+      # Path: /Volumes/.../test/historical_data/uploads/
+      # This is the DEFAULT source when no job parameter is provided
+      historical_data:
+        description: "Historical clinical trial data (ZIP archives with tsDTA + OA)"
+        root: "test/historical_data"
+        # source = "test/historical_data/uploads"
+        # target = "test/historical_data/ingested"
+      
+      # NOTE: UI uploads path is configured in app.yaml (UI_UPLOAD_ROOT env var)
+      # UI uploads use date-first structure: test/ui/uploads/{YYYY-MM-DD}/{type}/
+      # The source_root job parameter can override this when triggered from UI
+    
+    # File type handling
+    file_types:
+      archives:
+        description: "Archive files to extract"
+        extensions: [".zip", ".tar.gz", ".7z"]
+        action: "extract"
+      
+      documents:
+        description: "Regular documents to catalog"
+        extensions: [".pdf", ".docx", ".doc", ".xlsx", ".xls"]
+        action: "catalog"
+    
+    # Output tables
+    manifest_table: "md_file_history"
+    manifest_table_description: "The table contains information about documents processed from files. It includes details such as the document ID, source paths, file size, and extraction status. This data can be used to track the processing of documents, analyze file types and sizes, and monitor the status of document extraction tasks. Additionally, it provides insights into nested zip files and categorization notes, which can help in organizing and managing document workflows. Now includes processing tracking fields (status, duration, errors) - no separate status table needed."
+    
+    # Reference table for document types and processing enablement
+    document_types_table: "md_document_types"
+    document_types_table_description: "Reference table that controls which document types are enabled for processing. Documents in md_file_history join with this table based on document_tags to determine if they should be processed."
+    
+    # Autoloader checkpoint
+    checkpoint_subdir: "jobs/_checkpoints/file_processor"
+    
+    # Supported file extensions (all types)
+    supported_extensions:
+      - ".pdf"
+      - ".doc"
+      - ".docx"
+      - ".xls"
+      - ".xlsx"
+      - ".txt"
+      - ".csv"
+    
+    # Document categorization and tagging (applies to all file types)
+    document_categories:
+      # Protocol documents
+      Protocol:
+        match_name: "Protocol"           # Folder name to match (case-insensitive)
+        tags: ["Protocol"]               # Tags to apply
+        active: false                    # Active flag
+        description: "Protocol documents - archived/historical"
+        subcategories: {}                # No subcategories
+      
+      # Operational Agreement documents (folder-based detection)
+      # Supports paths like: uploads/operational_agreements/... or operational_agreements/...
+      OperationalAgreement:
+        match_name: "operational_agreements"  # Folder name to match (case-insensitive)
+        tags: ["OPERATIONAL_AGREEMENT"]       # Same tag as DTA subcategory for consistency
+        active: true                          # Active flag
+        description: "Operational Agreement documents uploaded via folder structure"
+        subcategories: {}                     # No subcategories
+      
+      # Data Transfer Agreement documents
+      DTA:
+        match_name: "DTA"                # Folder name to match (case-insensitive)
+        tags: ["DTA"]                    # Base tags
+        active: true                     # Default active if no subcategory
+        description: "Data Transfer Agreement documents"
+        
+        subcategories:
+          # DTA > Dictionary (folder-based)
+          Dictionary:
+            match_type: "folder"         # Match by folder name
+            match_name: "Dictionary"     # Subfolder to match (case-insensitive)
+            tags: ["DTA", "Dictionary"]  # Combined tags
+            active: true                 # Active flag for this combination
+            description: "DTA data dictionaries"
+          
+          # DTA > SOW (folder-based)
+          SOW:
+            match_type: "folder"         # Match by folder name
+            match_name: "SOW"
+            tags: ["DTA", "SOW"]
+            active: false                # Inactive - Statement of Work archived
+            description: "DTA Statements of Work"
+          
+          # DTA > tsDTA (extension-based - Excel files)
+          tsDTA:
+            match_type: "extension"      # Match by file extension
+            match_extensions:            # Excel file extensions
+              - ".xls"
+              - ".xlsx"
+              - ".xlsm"
+              - ".xlsb"
+              - ".xlt"
+              - ".xltx"
+              - ".xltm"
+            tags: ["DTA", "tsDTA"]
+            active: true                
+            description: "Timestamped DTA documents (Excel files)"
+          
+          # DTA > OPERATIONAL_AGREEMENT (extension-based - Word/PDF files)
+          OPERATIONAL_AGREEMENT:
+            match_type: "extension"      # Match by file extension
+            match_extensions:            # Word and PDF file extensions
+              - ".pdf"
+              - ".doc"
+              - ".docx"
+              - ".docm"
+              - ".dot"
+              - ".dotx"
+              - ".dotm"
+            tags: ["DTA", "OPERATIONAL_AGREEMENT"]
+            active: true                 # Active
+            description: "DTA operational agreement documents (Word/PDF)"
+      
+      # Technical Design Documents
+      TDD:
+        match_name: "TDD"
+        tags: ["TDD"]
+        active: true
+        description: "Technical Design Documents"
+        subcategories: {}                # No subcategories for now
+  
+  # ----------------------------------------
+  # PIPELINE 2: tsDTA Excel Processor
+  # ----------------------------------------
+  tsdta_processor:
+    description: "Process tsDTA Excel files from trial metadata"
+    owner: "data-team"
+    mode: "streaming"
+    
+    xls:
+      standard:
+        description: "Extract sheet metadata from tsDTA Excel files with categorization"
+        file_pattern: "*.xls*"
+        priority: "high"
+        
+        source:
+          source_table: "md_file_history"           # Read from manifest table
+          filter_tags: ["tsDTA"]                       # Only tsDTA documents
+          filter_active: true                          # Only active tsDTA documents (as per DTA config)
+          filter_status: "READY_FOR_PROCESSING"        # Only ready documents
+        
+        output:
+          excel_sheets_table: "md_dta_excel_file_raw"
+          excel_sheets_table_description: "Generic catalog of Excel sheet metadata extracted from clinical trial documents. Stores one row per sheet with categorization for downstream processing. Categories include transfer_metadata, test_concepts, visits_and_timepoints, and codelists."
+        
+        steps:
+          - step: "extract_sheets"
+            source: "${globals.bronze_schema}.md_file_history"
+            output: "${globals.bronze_schema}.md_dta_excel_file_raw"
+            notebook: "notebooks/data_engineering/clinical_data_standards/jobs/nb_extract_excel_sheets"
+    
+    # Validation rules for sheet processing
+    # Required columns are used for:
+    # 1. Header row detection (find row with all required columns)
+    # 2. Row validation (mark rows missing required values as MANUAL_REVIEW_REQUIRED)
+    validation:
+      # Codelist sheet validation
+      codelists:
+        # Header detection patterns - row must contain ALL of these patterns to be the header
+        # Uses regex (case-insensitive) - all patterns must match in the same row
+        header_patterns:
+          - "codelist.*ref|reference"   # "Codelist Reference" or similar
+          - "values?"                    # "Value" or "Values"
+        # Required columns for row validation (standardized names after mapping)
+        required_columns:
+          - codelist_reference    # Variable name the codelist applies to
+          - code_value            # Actual codelist value
+        # Optional columns (nice to have, not required)
+        optional_columns:
+          - sdtm_value            # SDTM mapping for the value (or "Full text")
+        
+        # Definition hash fields for gold table (common fields added automatically)
+        definition_hash_fields:
+          - transfer_variable_name
+          - values                # ARRAY - serialized as sorted, lowercase, pipe-delimited
+      
+      # Transfer Metadata sheet validation
+      transfer_metadata:
+        # Required columns (using final schema field names, not _raw)
+        # These columns must be present and non-null for a row to be valid
+        required_columns:
+          - transfer_variable_name
+          - transfer_variable_order
+          - format
+          - anticipated_max_length
+          - transfer_file_key
+          - populate_for_all_records
+        
+        # Definition hash fields for gold table (common fields added automatically)
+        # Hash is computed during approval (silver → gold promotion)
+        definition_hash_fields:
+          - transfer_variable_name
+          - transfer_variable_order
+          - format
+          - anticipated_max_length
+          - transfer_file_key
+          - populate_for_all_records
+          - codelist_values  # ARRAY - serialized as sorted, lowercase, pipe-delimited
+      
+      # Test Concepts sheet validation
+      # NOTE: No required columns - test concepts have variable schemas across vendors
+      # Header detection uses transfer variable names from silver table as reference
+      test_concepts:
+        # Output table for test concepts
+        output_table: "md_dta_vendor_test_concepts_draft"
+        output_table_description: "Raw test concept rows from vendor tsDTA Excel files. Uses MAP<STRING, STRING> (transfer_tuple_map) for format-tolerant extraction across heterogeneous vendor formats."
+        
+        # Header detection strategy
+        # Uses existing transfer variables from silver table to identify header row
+        header_detection:
+          strategy: "transfer_variable_match"  # Match against known transfer variable names
+          min_match_count: 3  # At least 3 transfer variables must match for valid header
+          max_scan_rows: 25  # How many rows to scan for headers
+        
+        # Fixed columns detected by position (before first transfer variable column)
+        fixed_columns:
+          column_0: "TAB_NAME"
+          column_1: "TEST_CONCEPT_REFERENCE"
+        
+        # Definition hash fields for gold table (common fields added automatically)
+        # Hash is computed during approval (silver → gold promotion)
+        definition_hash_fields:
+          - transfer_tuple_map  # MAP - serialized as sorted JSON
+        
+        # Schema evolution - Delta will automatically merge new columns
+        schema_evolution:
+          enabled: true
+          merge_schema: true
+      
+      # Operational Agreement validation
+      # OA uses definition_hash for deduplication in gold tables
+      operational_agreement:
+        # Definition hash fields for gold table (common fields added automatically)
+        # Hash = operational_agreement_id + vendor + datastream
+        definition_hash_fields:
+          - operational_agreement_id  # Unique agreement identifier
+          # data_provider_name and data_stream_type added via common fields
+
+  # ----------------------------------------
+  # PIPELINE 3: Protocol Processor (Sandbox)
+  # ----------------------------------------
+  # Parses Protocol documents and extracts tables for sandbox preview
+  protocol_processor:
+    description: "Parse Protocol documents and extract tables (Schedule of Activities)"
+    owner: "data-team"
+    mode: "sandbox"
+    
+    # AI Processing Configuration
+    ai_processing:
+      # Document parsing using Databricks AI Document Intelligence
+      parse_document:
+        enabled: true
+        engine: "ai_document_intelligence"
+        extract_text: true
+        extract_tables: true
+        extract_images: false
+        output_format: "json"
+        timeout_seconds: 120
+      
+      # Section filtering configuration
+      # Controls which sections are processed (reduces processing time)
+      section_filter:
+        enabled: true                     # If true, only process sections matching target_sections
+        max_level: null                  # Optional: max TOC depth to process (null = all levels)
+        process_all_if_no_match: false   # If no sections match patterns, process all? (false = skip document)
+      
+      # Target sections to extract from Protocol documents
+      # Only processed if section_filter.enabled = true
+      target_sections:
+        - pattern: "Schedule of Activities"
+          alias: "soa"
+          extract_tables: true
+          description: "Study visit and procedure schedule"
+        - pattern: "Schedule.*Activities"
+          alias: "soa_alt"
+          extract_tables: true
+          description: "Alternate pattern for Schedule of Activities"
+      
+      # Entity extraction (disabled for sandbox preview)
+      entity_extraction:
+        enabled: false
+    
+    # Source configuration
+    source:
+      # File types to process
+      file_extensions: [".pdf", ".docx", ".doc"]
+      # Document tags to match
+      document_tags: ["Protocol"]
+    
+    # Output configuration
+    output:
+      # Sandbox table for storing extracted data (Bronze layer)
+      sandbox_table: "md_sandbox_documents"
+      sandbox_table_description: "Sandbox table storing extracted sections and tables from Protocol documents for UI preview"
+      
+      # Schema for sandbox table
+      schema:
+        document_id: "STRING"           # FK to md_file_history
+        section_name: "STRING"          # e.g., "Schedule of Activities"
+        section_type: "STRING"          # e.g., "table", "text"
+        section_index: "INT"            # Order of section in document
+        extracted_tables: "STRING"      # JSON array of tables with headers/rows
+        extracted_text: "STRING"        # Plain text content (if applicable)
+        extraction_metadata: "STRING"   # JSON with extraction stats, confidence
+        created_ts: "TIMESTAMP"
+        databricks_run_id: "STRING"
+
+  # ----------------------------------------
+  # PIPELINE 5: Operational Agreement Processor
+  # ----------------------------------------
+  # Parses Operational Agreement Word/PDF documents and extracts structured data
+  operational_agreement_processor:
+    documents:
+      operational_agreement:
+        source:
+          source_table: "md_file_history"
+          filter_tags:
+            - "OPERATIONAL_AGREEMENT"
+          filter_active: true
+          filter_status: "READY_FOR_PROCESSING"
+          file_extensions:
+            - ".docx"
+            - ".doc"
+            - ".docm"
+            - ".dot"
+            - ".dotx"
+            - ".dotm"
+            - ".pdf"
+
+        output:
+          raw_table_name: "md_oa_file_raw"
+
+        # LLM configuration for OA entity extraction
+        llm:
+          service: "gpt_entity_extractor"    # Reference to generic service in services section
+          system_prompt: "You are a precise information extraction assistant that outputs strict JSON only."
+          prompt:
+            header: |
+              You are analysing the full text of a trial-specific data transfer agreement (tsDTA)
+              operational agreement document. The text may contain multiple pages concatenated together
+              and may include page headers or footers such as "Page X of Y". These headers and footers
+              are not part of the logical content and must be ignored when extracting entities.
+
+              From THIS DOCUMENT, you must identify and extract the following three entities:
+
+              1) trial_id
+                 - The trial identifier or protocol ID used to uniquely identify the study.
+                 - This may be labelled as "Trial ID", "Protocol Number", "Study ID" or similar.
+
+              2) data_stream_type
+                 - The name or label of the data stream or dataset covered by this agreement.
+                 - Typical examples include things like "LAB", "PK", "ECG", "ECG (Clario)", "Central Lab", etc.
+                 - It is often found in tables or summary sections under headings such as
+                   "Type of Data", "Type of Transfer", "Data Stream", "Data Category" or similar.
+                 - If there is a row like "Type of Data: ECG" or similar, you MUST use that value
+                   (e.g. "ECG") as data_stream_type instead of leaving it empty.
+              3) data_provider_name
+                 - The name of the external organisation, laboratory or party acting as the data provider
+                   in this document.
+                 - This is the primary data provider responsible for the data covered by the agreement.
+
+              For each of these entities, you must return a string. If a value cannot be confidently
+              determined from the document text, you must return an empty string "" for that field.
+
+              OUTPUT FORMAT
+
+              You MUST return a single JSON object with exactly these fields:
+
+              {
+                "trial_id":           string,
+                "data_stream_type":        string,
+                "data_provider_name": string
+              }
+
+              Rules:
+              - Do NOT include any additional fields.
+              - Do NOT include any explanatory text before or after the JSON object.
+              - Use empty strings "" when a value cannot be found.
+              - Base your answers only on the content provided in this document.
+
+              ----- DOCUMENT TEXT START -----
+            footer: "----- DOCUMENT TEXT END -----"
+          output_fields:
+            - trial_id
+            - data_stream_type
+            - data_provider_name
+
+# ================================
+# STREAMING - Document Processing Configuration
+# ================================
+# Enables streaming-based document processing with status tracking
+# Uses Delta CDF (Change Data Feed) for real-time triggers
+
+streaming:
+  enabled: true
+  
+  # Delta CDF settings
+  change_data_feed:
+    enabled: true
+    # Tables with CDF enabled for status change triggers
+    cdf_tables:
+      - "md_file_history"
+  
+  # Processing status lifecycle
+  # READY_FOR_PROCESSING → *_IN_PROCESS → *_COMPLETED / *_FAILED → READY_FOR_VERSIONING → VERSIONED
+  status_values:
+    # Initial state after file extraction
+    ready_for_processing: "READY_FOR_PROCESSING"
+    
+    # tsDTA (Excel) processing states
+    tsdta_in_process: "TSDTA_PROCESSING"
+    tsdta_completed: "TSDTA_COMPLETED"
+    tsdta_failed: "TSDTA_FAILED"
+    
+    # Document (PDF/Word) processing states (future)
+    doc_in_process: "DOC_PROCESSING"
+    doc_completed: "DOC_COMPLETED"
+    doc_failed: "DOC_FAILED"
+    
+    # Versioning states
+    ready_for_versioning: "READY_FOR_VERSIONING"
+    versioning_in_process: "VERSIONING_IN_PROCESS"
+    versioned: "VERSIONED"
+    versioning_failed: "VERSIONING_FAILED"
+  
+  # Completion tracking for parent documents
+  completion_tracking:
+    enabled: true
+    
+    # Tags that must be completed before versioning triggers
+    # Files with ANY of these tags must be processed for versioning to trigger
+    # Add more tags as new processors are implemented
+    required_tags_for_versioning:
+      - "tsDTA"                    # Excel processing (current)
+      # - "OPERATIONAL_AGREEMENT"  # Future: PDF/Word processing
+      # - "Dictionary"             # Future: Dictionary processing
+    
+    # Columns added to md_file_history for tracking child document processing
+    tracking_columns:
+      - total_documents_count       # Total files extracted from ZIP
+      - required_documents_count    # Files with required tags (to be processed)
+      - processed_documents_count   # Successfully processed required files
+  
+  # Trigger settings
+  trigger:
+    # availableNow=True: Process all available, then stop (batch-style streaming)
+    mode: "availableNow"
+    # Max files per micro-batch
+    max_files_per_trigger: 100
+
+# ================================
+# VERSIONING - SCD Type 2 Configuration
+# ================================
+# Enables 3-level versioning for metadata library tables:
+# - Library Major (1.0, 2.0) - Production canonical data
+# - DTA Major (1.0-DTA_A-v1.0) - Approved DTA version
+# - DTA Draft (1.0-DTA_A-draft1) - Work in progress
+
+versioning:
+  enabled: true
+  
+  # Version tag format: {library_major}-{dta_id}-{version_type}{version_number}
+  # Examples:
+  #   - "1.0"                 → Library major v1
+  #   - "1.0-DTA_A-draft1"    → DTA-A draft 1
+  #   - "1.0-DTA_A-v1.0"      → DTA-A major v1.0 (approved)
+  #   - "2.0"                 → Library major v2 (promoted)
+  
+  # Version registry table (tracks all versions across all library types)
+  registry_table: "md_version_registry"
+  registry_schema: "gold_md"
+  
+  # Definition hash configuration for gold tables
+  # Hash is computed during approval (silver → gold promotion)
+  # Common fields are always included in ALL library type hashes
+  definition_hash_common_fields:
+    - data_provider_name
+    - data_stream_type
+  
+  # Per-library type hash fields (type-specific + common fields = full hash)
+  # These are read by the approval notebook to compute definition_hash
+  definition_hash_fields_by_type:
+    transfer_variables:
+      - transfer_variable_name
+      - transfer_variable_order
+      - format
+      - anticipated_max_length
+      - transfer_file_key
+      - populate_for_all_records
+      - codelist_values  # ARRAY - serialized as sorted, lowercase, pipe-delimited
+    test_concepts:
+      - transfer_tuple_map  # MAP - serialized as sorted JSON
+    codelists:
+      - transfer_variable_name
+      - values  # ARRAY - serialized as sorted, lowercase, pipe-delimited
+    operational_agreement:
+      - operational_agreement_id  # Unique agreement identifier
+    data_ingestion_parameters:
+      - data_ingestion_id  # Unique ingestion parameter identifier
+  
+  # Library tables with versioning enabled
+  # gold_columns: Columns to copy from silver to gold during approval (excludes version/audit cols)
+  library_tables:
+    - name: "md_dta_transfer_variables"
+      library_type: "transfer_variables"
+      schema: "gold_md"
+      silver_table: "md_dta_transfer_variables_draft"
+      silver_schema: "silver_md"
+      business_keys:
+        - "definition_hash"
+      description: "Master library of transfer variable definitions"
+      gold_columns:
+        - transfer_variable_name
+        - transfer_variable_label
+        - format
+        - anticipated_max_length
+        - transfer_file_key
+        - populate_for_all_records
+        - codelist_values
+        - variable_description
+        - example_values
+        - status
+        - dta_id
+        - transfer_variable_order
+        - vendor_comment
+        - domain_info
+        - data_provider_name
+        - data_stream_type
+    
+    - name: "md_dta_vendor_test_concepts"
+      library_type: "test_concepts"
+      schema: "gold_md"
+      silver_table: "md_dta_vendor_test_concepts_draft"
+      silver_schema: "silver_md"
+      business_keys:
+        - "definition_hash"
+      description: "Master library of test concept definitions with transfer variable mappings"
+      gold_columns:
+        - test_concept_reference
+        - transfer_tuple_map
+        - codelist_values
+        - variable_description
+        - status
+        - dta_id
+        - vendor_comment
+        - notes
+        - domain_info
+        - data_provider_name
+        - data_stream_type
+    
+    - name: "md_dta_operational_agreement"
+      library_type: "operational_agreement"
+      schema: "gold_md"
+      silver_table: "md_dta_operational_agreement_draft"
+      silver_schema: "silver_md"
+      business_keys:
+        - "definition_hash"
+      description: "Operational agreements defining vendor data delivery specifications"
+      gold_columns:
+        - operational_agreement_id
+        - oa_type
+        - options
+        - selected_options
+        - status
+        - dta_id
+        - notes
+        - data_provider_name
+        - data_stream_type
+      # Related tables are promoted from silver to gold alongside the main table
+      related_tables:
+        - silver_table: "md_dta_oa_attributes_draft"
+          gold_table: "md_dta_oa_attributes"
+          gold_columns:
+            - oa_attributes_id
+            - operational_agreement_id
+            - item_key
+            - item_label
+            - vendor_comment
+            - status
+            - dta_id
+            - notes
+            - data_provider_name
+            - data_stream_type
+        - silver_table: "md_dta_oa_options_draft"
+          gold_table: "md_dta_oa_options"
+          gold_columns:
+            - oa_option_id
+            - operational_agreement_id
+            - option_key
+            - option_label
+            - is_selected
+            - status
+            - dta_id
+            - notes
+            - data_provider_name
+            - data_stream_type
+        - silver_table: "md_dta_oa_other_draft"
+          gold_table: "md_dta_oa_other"
+          gold_columns:
+            - oa_other_id
+            - operational_agreement_id
+            - item_key
+            - item_value
+            - status
+            - dta_id
+            - notes
+            - data_provider_name
+            - data_stream_type
+    
+    - name: "md_dta_codelists"
+      library_type: "codelists"
+      schema: "gold_md"
+      silver_table: "md_codelists_normalized"
+      silver_schema: "silver_md"
+      business_keys:
+        - "definition_hash"
+      description: "Master library of codelist definitions with value-to-SDTM mappings"
+      gold_columns:
+        - codelist_id
+        - transfer_variable_name
+        - values
+        - value_sdtm_mapping
+        - status
+        - dta_id
+        - notes
+        - data_provider_name
+        - data_stream_type
+    
+    - name: "md_dta_data_ingestion_parameters"
+      library_type: "data_ingestion_parameters"
+      schema: "gold_md"
+      silver_table: "md_dta_data_ingestion_parameters_draft"
+      silver_schema: "silver_md"
+      business_keys:
+        - "data_ingestion_id"
+      description: "Data Ingestion Parameters used within a DTA"
+      gold_columns:
+        - data_ingestion_id
+        - parameter_name
+        - parameter_value
+        - parameter_type
+        - status
+        - dta_id
+        - notes
+        - data_provider_name
+        - data_stream_type
+    
+    # Future library tables can be added here:
+
+# ================================
+# USAGE NOTES
+# ================================
+# 
+# Benefits of Single Config File:
+# ✅ All pipelines in one place - easy to manage
+# ✅ Shared services - define once, use everywhere
+# ✅ Consistent structure across all pipelines
+# ✅ Easy to compare and understand different flows
+# 
+# Adding a New Pipeline:
+# 1. Add under 'pipelines:' section
+# 2. Define document types and steps
+# 3. Reference existing services or create new ones
+# 
+# Pipeline Modes:
+# - streaming: Uses Auto Loader for continuous processing
+# - batch: One-time processing of existing data
+# 
+# Reading This Config in Notebooks:
+# =============================================================================
+# EXPORT CONFIGURATION
+# =============================================================================
+# Defines how DTA metadata is exported to files (Excel, PDF, etc.)
+# Export path: /Volumes/{catalog}/bronze_md/{source_root}/{export_folder}/{date}/{dta_number}/
+# =============================================================================
+
+export:
+  enabled: true
+  
+  # Path configuration
+  export_folder: "exports"           # Folder under source_root for exports
+  date_format: "%Y-%m-%d"            # Date folder format (e.g., 2025-12-23)
+  timestamp_format: "%Y%m%d_%H%M%S"  # Filename timestamp format
+  
+  # Document types available for export
+  # Each type can be enabled/disabled independently
+  document_types:
+    - type: "tsDTA"
+      label: "Trial Specific DTA (Excel)"
+      description: "Complete tsDTA metadata export with summary, version history, and all metadata by domain"
+      format: "excel"
+      file_extension: ".xlsx"
+      is_enabled: true
+      
+      # What to include in the export
+      includes:
+        - dta_summary           # DTA entity details, status, workflow
+        - version_history       # All version registry entries for this DTA
+        - transfer_variables    # Transfer variable records
+        - test_concepts         # Test concept records
+      
+      # Sheet organization
+      sheets_by_domain: true    # Split metadata into separate sheets by domain_info
+      max_sheet_name_length: 31 # Excel sheet name limit
+      
+    - type: "oa"
+      label: "Operational Agreement (PDF)"
+      description: "Operational Agreement document export"
+      format: "pdf"
+      file_extension: ".pdf"
+      is_enabled: false         # Not implemented yet
+      includes:
+        - operational_agreement
+        
+    - type: "dta_full"
+      label: "Complete DTA Package (ZIP)"
+      description: "Complete package with all DTA documents"
+      format: "zip"
+      file_extension: ".zip"
+      is_enabled: false         # Enable when all document types are ready
+      includes:
+        - tsDTA
+        - oa
+  
+  # Export manifest
+  # Created in the export folder to track what was exported
+  manifest:
+    enabled: true
+    filename: "export_manifest.json"
+
+
+# ```python
+# from clinical_data_standards_framework.config_manager import ConfigManager
+# config = ConfigManager("config/clinical_data_standards.yaml")
+# 
+# # Get specific pipeline
+# autoloader_config = config.get_pipeline("autoloader")
+# batch_config = config.get_pipeline("batch_read")
+# trial_zip_config = config.get_pipeline("trial_metadata_zip_processor")
+# ```
+# 
+# See config/examples/complete_example_config.yaml for more patterns
+#
+
